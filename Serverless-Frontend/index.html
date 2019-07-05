@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>AWS Config Rules Workshop</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.11.1/bootstrap-table.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.12.4/js/bootstrap-select.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.12.4/css/bootstrap-select.min.css">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.11.1/bootstrap-table.min.css">
+  <script src="https://sdk.amazonaws.com/js/aws-sdk-2.135.0.min.js"></script>
+  <script src="js/aws-cognito-sdk.min.js"></script>
+  <script src="js/amazon-cognito-identity.min.js"></script>
+  <script src="js/config.js"></script>
+
+</head>
+<body>
+  <div class="container">
+    <div class='page-header'>
+      <div class='btn-toolbar pull-right'>
+        <div class='btn-group'>
+          <button type="button" id="logInButton" class="btn btn-info btn-lg" data-toggle="modal" data-target="#loginModal">Log In / Register</button>
+          <button type="button" id="createTeamButton" class="btn btn-lg btn-info hidden" data-toggle="modal" data-target="#createTeamModal">Create a Team</button>
+          <button type="button" id="joinTeamButton" class="btn btn-info btn-lg hidden" data-toggle="modal" data-target="#joinTeamModal">Join a Team</button>
+          <button type="button" id="modifyTeamButton" class="btn btn-info btn-lg hidden">Change Your Team</button>
+          <button type="button" id="logOutButton" class="btn btn-info btn-lg hidden">Log Out</button>
+        </div>
+      </div>
+      <h2>Welcome to the Config Rules Workshop Leaderboard</h2>
+    </div>
+  </div>
+
+
+  <div class="modal fade" id="loginModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <!-- Modal Header -->
+        <div class="modal-header">
+          <button type="button" class="close"
+          data-dismiss="modal">
+          <span aria-hidden="true">&times;</span>
+          <span class="sr-only">Close</span>
+        </button>
+        <h4 class="modal-title" id="myModalLabel">
+          Login
+        </h4>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="modal-body">
+        <form id="loginForm">
+          <input type="text" id ="email" name="email" placeholder="Email" />
+          <input type="password" id="pwd" name="pwd" placeholder="Password" />
+          <input type="submit" id="login-modal-button" name="login" class="btn btn-info" value="Login"/ >
+        </form>
+        <div class="login-help">
+          <a href="register.html">Register</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!--Team Creation Modal-->
+<div class="modal fade" id="createTeamModal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <!-- Modal Header -->
+      <div class="modal-header">
+        <button type="button" class="close"
+        data-dismiss="modal">
+        <span aria-hidden="true">&times;</span>
+        <span class="sr-only">Close</span>
+      </button>
+      <h4 class="modal-title" id="myModalLabel">
+        Team Creation
+      </h4>
+    </div>
+
+    <!-- Modal Body -->
+    <div class="modal-body">
+      <form id="createTeamForm">
+        <input type="text" id="newTeamNameText" name="newTeamName" placeholder="Enter new Team Name" />
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button type="button" id="submitCreateTeamButton" class="btn btn-success btn-lg ">Create Team</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!--Team Selection Modal-->
+<div class="modal fade" id="joinTeamModal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <!-- Modal Header -->
+      <div class="modal-header">
+        <button type="button" class="close"
+        data-dismiss="modal">
+        <span aria-hidden="true">&times;</span>
+        <span class="sr-only">Close</span>
+      </button>
+      <h4 class="modal-title" id="myModalLabel">
+        Join a Team
+      </h4>
+    </div>
+
+    <!-- Modal Body -->
+    <div class="modal-body">
+
+      <div class="form-group">
+        <form id="teamSelectionForm">
+          <select class="form-control select-picker" id="teamList">
+          </select>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button type="button" id="selectTeamButton" class="btn btn-info btn-lg ">Join</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="container">
+  <p id="emailText" class="hidden"></p>
+  <p id="teamText" class="hidden"></p>
+  <p id="jwtText" class="hidden"></p>
+  <textarea id="jwtTokenText" class="hidden"></textarea>
+</div>
+<div class="container">
+  <button type="button" id="copyJwtButton" class="btn btn-success hidden">Copy JWT</button>
+</div>
+<br>
+<table id="leaderboardTable" class="table table-nonfluid table-bordered table-striped table-hover">
+  <thead>
+    <tr>
+      <th data-field="teamId">Team Name</th>
+      <th data-field="rulesComplete">Rules Completed</th>
+      <th data-field="score">Score</th>
+      <th data-field="lastUpdated">Last Updated Date</th>
+    </tr>
+  </thead>
+</table>
+
+</body>
+<script src="js/index.js"></script>
+</html>

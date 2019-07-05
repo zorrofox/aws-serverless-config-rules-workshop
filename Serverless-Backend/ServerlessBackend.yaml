@@ -1,0 +1,948 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description:
+  Deploys the Config Rules Workshop Backend Serverless API
+
+Resources:
+  ConfigWorkshopLeaderboardTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ConfigWorkshopLeaderboard
+      AttributeDefinitions:
+        -
+          AttributeName: teamId
+          AttributeType: S
+      KeySchema:
+        -
+          AttributeName: teamId
+          KeyType: HASH
+      ProvisionedThroughput: 
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  ConfigWorkshopUsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ConfigWorkshopUsers
+      AttributeDefinitions:
+        -
+          AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        -
+          AttributeName: userId
+          KeyType: HASH
+      ProvisionedThroughput: 
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: LeadboardUserPool
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: LeadboardWeb
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+
+  RequestLeadboardExecutionRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      RoleName: !Sub LeadboardLambdaRole-${AWS::Region}
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement: 
+          - 
+            Effect: Allow
+            Principal: 
+              Service: 
+                - lambda.amazonaws.com
+            Action: 
+              - "sts:AssumeRole"
+      Path: "/leadboard/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies: 
+        - 
+          PolicyName: LeadboardPolicy
+          PolicyDocument: 
+            Version: 2012-10-17
+            Statement: 
+              - 
+                Effect: Allow
+                Action: 
+                  - dynamodb:*
+                Resource:
+                   - !GetAtt ConfigWorkshopLeaderboardTable.Arn
+                   - !GetAtt ConfigWorkshopUsersTable.Arn
+              -
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*:/aws/lambda/*
+  
+  GetLeadboardFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: GetLeadboard
+      Runtime: python3.6
+      Role: !GetAtt RequestLeadboardExecutionRole.Arn
+      Timeout: 5
+      MemorySize: 128
+      Handler: index.lambda_handler
+      Code:
+        ZipFile: >
+          import boto3
+          
+          import json
+          
+          from collections import defaultdict
+
+          client = boto3.client('dynamodb')
+
+
+          def lambda_handler(event, context):
+
+              response = client.scan(
+                  TableName='ConfigWorkshopLeaderboard'
+              )
+
+              print(response["Items"])
+              leaderboard = defaultdict(list)
+              for item in response["Items"]:
+                  teamScore = {}
+                  teamScore["teamId"] = item["teamId"]["S"]
+                  teamScore["score"] = item["score"]["N"]
+                  teamScore["rulesComplete"] = item["rulesComplete"]["N"]
+                  teamScore["lastUpdated"] = item["lastUpdated"]["S"]
+                  leaderboard["scores"].append(teamScore)
+
+              response = {}
+              response["headers"] = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*"}
+              response["statusCode"] = 200
+              response["body"] =  json.dumps(leaderboard)
+              return response
+
+  GetTeamsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: GetTeams
+      Runtime: python3.6
+      Role: !GetAtt RequestLeadboardExecutionRole.Arn
+      Timeout: 5
+      MemorySize: 128
+      Handler: index.lambda_handler
+      Code:
+        ZipFile: >
+          import boto3
+          
+          import json
+          
+          import random
+          
+          import string
+          
+          from collections import defaultdict
+
+          client = boto3.client('dynamodb')
+
+
+          def lambda_handler(event, context):
+
+              print(event)
+              userId = event["requestContext"]["authorizer"]["claims"]["cognito:username"]
+
+
+              ddbResponse = client.scan(TableName='ConfigWorkshopLeadboard')
+
+              print(ddbResponse)
+              teamList = defaultdict(list)
+              if "Items" in ddbResponse:
+                  for item in ddbResponse["Items"]:
+                      teamScore = {}
+                      teamScore["teamId"] = item["teamId"]["S"]
+                      teamList["scores"].append(teamScore)
+
+              response = {}
+              response["headers"] = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*"}
+              response["statusCode"] = 200
+
+              response["body"] =  json.dumps(responseBody)
+              return response
+
+  PostTeamFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: PostTeam
+      Runtime: python3.6
+      Role: !GetAtt RequestLeadboardExecutionRole.Arn
+      Timeout: 5
+      MemorySize: 128
+      Handler: index.lambda_handler
+      Code:
+        ZipFile: >
+          import boto3
+
+          import botocore
+          
+          import json
+          
+          import random
+          
+          import string
+          
+          import datetime
+          
+          from collections import defaultdict
+
+          client = boto3.client('dynamodb')
+
+
+          def lambda_handler(event, context):
+
+              print(event)
+              userId = event["requestContext"]["authorizer"]["claims"]["cognito:username"]
+
+              teamId = json.loads(event["body"])["teamId"]
+
+              try:
+                  teamResponse = client.put_item(
+                      TableName='ConfigWorkshopLeaderboard',
+                      Item={
+                        'teamId': {
+                          'S': teamId
+                        },
+                        'score': {
+                          'N': '0'
+                        },
+                        'rulesComplete': {
+                          'N': '0'
+                        },
+                        'lastUpdated': {
+                          'S': str(datetime.datetime.now())
+                        }
+                      },
+                      ConditionExpression = 'attribute_not_exists(teamId)'
+                  )
+                  print(teamResponse)
+              except botocore.exceptions.ClientError as e:
+                  # Ignore the ConditionalCheckFailedException, bubble up
+                  # other exceptions.
+                  if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                      print('Team ' + teamId + ' already exists!')
+                  else:
+                      raise
+
+              newUser = {
+                  "userId" : {
+                      "S" : userId
+                  },
+                  "teamId" : {
+                      "S" : teamId
+                  },
+                  "rulesComplete" : {
+                      "L" : []
+                  },
+                  "score" : {
+                      "N" : '0'
+                  },
+                  "lastUpdated" : {
+                      "S" : str(datetime.datetime.now())
+                  }
+              }
+
+              try:
+                  newUserResponse = client.put_item(
+                      TableName='ConfigWorkshopUsers',
+                      Item=newUser,
+                      ConditionExpression = 'attribute_not_exists(userId)'
+                      )
+                  print(newUserResponse)
+              except botocore.exceptions.ClientError as e:
+                  # Ignore the ConditionalCheckFailedException, bubble up
+                  # other exceptions.
+                  if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                      print('Ueer ' + userId + ' already exists!')
+                  else:
+                      raise
+              
+              response = {}
+              response["headers"] = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*"}
+              response["statusCode"] = 200
+              responseBody = {}
+              responseBody["teamId"] = teamId
+
+              response["body"] =  json.dumps(responseBody)
+              return response
+
+
+
+  GetUserFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: GetUser
+      Runtime: python3.6
+      Role: !GetAtt RequestLeadboardExecutionRole.Arn
+      Timeout: 5
+      MemorySize: 128
+      Handler: index.lambda_handler
+      Code:
+        ZipFile: >
+          import boto3
+          
+          import json
+          
+          import random
+          
+          import string
+          
+          from collections import defaultdict
+
+          client = boto3.client('dynamodb')
+
+          def lambda_handler(event, context):
+
+              print(event)
+              userId = event["requestContext"]["authorizer"]["claims"]["cognito:username"]
+
+              ddbResponse = client.get_item(
+                  TableName='ConfigWorkshopUsers',
+                  Key={
+                      'userId': {
+                          'S': userId
+
+                          }
+
+                      }
+                  )
+
+              print(ddbResponse)
+              responseBody = {}
+              if "Item" in ddbResponse:
+                  responseBody["teamId"] = ddbResponse["Item"]["teamId"]["S"]
+              else:
+                  responseBody["teamId"] = "N/A"
+
+              response = {}
+              response["headers"] = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*"}
+              response["statusCode"] = 200
+
+              response["body"] =  json.dumps(responseBody)
+              return response
+
+  UpdateScoreFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: UpdateScore
+      Runtime: python3.6
+      Role: !GetAtt RequestLeadboardExecutionRole.Arn
+      Timeout: 5
+      MemorySize: 128
+      Handler: index.lambda_handler
+      Code:
+        ZipFile: >
+          import boto3
+          
+          import json
+          
+          import random
+          
+          import string
+          
+          import datetime
+          
+          from collections import defaultdict
+
+          client = boto3.client('dynamodb')
+
+
+          def lambda_handler(event, context):
+
+              print(event)
+              userId = event["requestContext"]["authorizer"]["claims"]["cognito:username"]
+
+              userResponse = client.get_item(
+                  TableName="ConfigWorkshopUsers",
+                  Key={
+                      'userId' : {
+                          'S' : userId
+                      }
+                  })
+
+              #check if rule completed has been completed already
+              completedRule = json.loads(event["body"])["ruleId"]
+              duplicatedRule = False
+              completedRulesList = userResponse["Item"]["rulesComplete"]["L"]
+              print(completedRulesList)
+              for rule in completedRulesList:
+                  if rule["S"] == completedRule:
+                      duplicatedRule = True
+
+              if duplicatedRule:
+                  response = {}
+                  response["headers"] = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*"}
+                  response["statusCode"] = 200
+                  responseBody = {}
+                  responseBody["status"] = "Rule already completed."
+                  print("coming up")
+                  print(responseBody)
+                  response["body"] =  json.dumps(responseBody)
+                  return response
+
+              completedRulesList.append({"S" : completedRule})
+
+              updatedUser = {
+                  "userId" : {
+                      "S" : userResponse["Item"]["userId"]["S"]
+                  },
+                  "teamId" : {
+                      "S" : userResponse["Item"]["teamId"]["S"]
+                  },
+                  "rulesComplete" : {
+                      "L" : completedRulesList
+                  },
+                  "score" : {
+                      "N" : str(int(userResponse["Item"]["score"]["N"]) + int(json.loads(event['body'])['points']))
+                  },
+                  "lastUpdated" : {
+                      "S" : str(datetime.datetime.now())
+                  }
+              }
+
+              #update the user to show new rule
+              updatedUserResponse = client.put_item(
+                  TableName='ConfigWorkshopUsers',
+                  Item=updatedUser
+                  )
+
+              #update the team score
+              teamResponse = client.update_item(
+                  TableName='ConfigWorkshopLeaderboard',
+                  Key={
+                      'teamId': {
+                          'S': userResponse["Item"]["teamId"]["S"]
+                      }
+                  },
+                  AttributeUpdates={
+                      'score': {
+                          'Value' : {
+                              'N' : json.loads(event['body'])['points']
+                          },
+                          'Action' : 'ADD'
+                      },
+                      'lastUpdated': {
+                          'Value' : {
+                              'S' : str(datetime.datetime.now())
+                          },
+                          'Action' : 'PUT'
+                      },
+                      'rulesComplete': {
+                           'Value': {
+                              'N' : '1'
+                           },
+                           'Action' : 'ADD'
+                      }
+                  }
+              )
+              print(teamResponse)
+
+              response = {}
+              response["headers"] = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*"}
+              response["statusCode"] = 200
+              responseBody = {}
+              responseBody["status"] = "You scored " + json.loads(event['body'])['points'] + " points!!"
+              print("coming up")
+              print(responseBody)
+              response["body"] =  json.dumps(responseBody)
+              return response
+
+
+  LeadboardApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: LeadboardEnpoint
+      EndpointConfiguration:
+        Types:
+          - EDGE
+
+      Body:
+        swagger: 2.0
+        info:
+          version: 1.0.0
+          title: Leadboard
+        securityDefinitions:
+          CognitoAuthorizer:
+            type: "apiKey"
+            name: Authorization
+            in: header
+            x-amazon-apigateway-authtype: cognito_user_pools
+            x-amazon-apigateway-authorizer:
+              providerARNs:
+                - !Join
+                  - ""
+                  - - "arn:aws:cognito-idp:"
+                    - !Ref AWS::Region
+                    - ":"
+                    - !Ref AWS::AccountId
+                    - ":userpool/"
+                    - !Ref UserPool
+              type: "cognito_user_pools"
+        paths:
+          /teamscores:
+            get:
+              description: Get the Leadboard Team Scores
+              produces:
+                - application/json
+              security:
+                - CognitoAuthorizer: []
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: 200
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                uri: 
+                  !Join
+                    - ""
+                    - - "arn:aws:apigateway:"
+                      - !Ref AWS::Region
+                      - ":lambda:path/2015-03-31/functions/"
+                      - !GetAtt GetLeadboardFunction.Arn
+                      - "/invocations"
+                passthroughBehavior: "when_no_match"
+                httpMethod: "POST"
+                contentHandling: "CONVERT_TO_TEXT"
+                type: "aws_proxy"
+            options:
+              responses:
+                "200":
+                  description: "200 response"
+                  schema:
+                    $ref: "#/definitions/Empty"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+                    Access-Control-Allow-Methods:
+                      type: "string"
+                    Access-Control-Allow-Headers:
+                      type: "string"
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS,POST'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                requestTemplates:
+                  application/json: "{\"statusCode\": 200}"
+                passthroughBehavior: "when_no_match"
+                type: "mock"
+            post:
+                description: Get the Leadboard Team Scores
+                produces:
+                  - application/json
+                security:
+                  - CognitoAuthorizer: []
+                responses:
+                  "200":
+                    description: "200 response"
+                    headers:
+                      Access-Control-Allow-Origin:
+                        type: "string"
+                x-amazon-apigateway-integration:
+                  responses:
+                    default:
+                      statusCode: 200
+                      responseParameters:
+                        method.response.header.Access-Control-Allow-Origin: "'*'"
+                  uri: 
+                    !Join
+                      - ""
+                      - - "arn:aws:apigateway:"
+                        - !Ref AWS::Region
+                        - ":lambda:path/2015-03-31/functions/"
+                        - !GetAtt UpdateScoreFunction.Arn
+                        - "/invocations"
+                  passthroughBehavior: "when_no_match"
+                  httpMethod: "POST"
+                  contentHandling: "CONVERT_TO_TEXT"
+                  type: "aws_proxy"
+
+          /users:
+            get:
+              description: Get the Leadboard User Score
+              produces:
+                - application/json
+              security:
+                - CognitoAuthorizer: []
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: 200
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                uri: 
+                  !Join
+                    - ""
+                    - - "arn:aws:apigateway:"
+                      - !Ref AWS::Region
+                      - ":lambda:path/2015-03-31/functions/"
+                      - !GetAtt GetUserFunction.Arn
+                      - "/invocations"
+                passthroughBehavior: "when_no_match"
+                httpMethod: "POST"
+                contentHandling: "CONVERT_TO_TEXT"
+                type: "aws_proxy"
+            options:
+              responses:
+                "200":
+                  description: "200 response"
+                  schema:
+                    $ref: "#/definitions/Empty"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+                    Access-Control-Allow-Methods:
+                      type: "string"
+                    Access-Control-Allow-Headers:
+                      type: "string"
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS,POST'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                requestTemplates:
+                  application/json: "{\"statusCode\": 200}"
+                passthroughBehavior: "when_no_match"
+                type: "mock"
+
+          /teams:
+            get:
+              description: Get the Leadboard Team List
+              produces:
+                - application/json
+              security:
+                - CognitoAuthorizer: []
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: 200
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                uri: 
+                  !Join
+                    - ""
+                    - - "arn:aws:apigateway:"
+                      - !Ref AWS::Region
+                      - ":lambda:path/2015-03-31/functions/"
+                      - !GetAtt GetTeamsFunction.Arn
+                      - "/invocations"
+                passthroughBehavior: "when_no_match"
+                httpMethod: "POST"
+                contentHandling: "CONVERT_TO_TEXT"
+                type: "aws_proxy"
+            options:
+              responses:
+                "200":
+                  description: "200 response"
+                  schema:
+                    $ref: "#/definitions/Empty"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+                    Access-Control-Allow-Methods:
+                      type: "string"
+                    Access-Control-Allow-Headers:
+                      type: "string"
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS,POST'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                requestTemplates:
+                  application/json: "{\"statusCode\": 200}"
+                passthroughBehavior: "when_no_match"
+                type: "mock"
+            post:
+              description: Join an Leadboard Team
+              produces:
+                - application/json
+              security:
+                - CognitoAuthorizer: []
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: 200
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                uri: 
+                  !Join
+                    - ""
+                    - - "arn:aws:apigateway:"
+                      - !Ref AWS::Region
+                      - ":lambda:path/2015-03-31/functions/"
+                      - !GetAtt PostTeamFunction.Arn
+                      - "/invocations"
+                passthroughBehavior: "when_no_match"
+                httpMethod: "POST"
+                contentHandling: "CONVERT_TO_TEXT"
+                type: "aws_proxy"
+
+  
+  Default4XXGatewayResponse:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+        gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+      ResponseType: DEFAULT_4XX
+      RestApiId: !Ref LeadboardApi
+
+  Default5XXGatewayResponse:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+        gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+      ResponseType: DEFAULT_5XX
+      RestApiId: !Ref LeadboardApi
+
+  UnauthoorizedGatewayResponse:
+    Type: 'AWS::ApiGateway::GatewayResponse'
+    Properties:
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+        gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+      ResponseType: UNAUTHORIZED
+      RestApiId: !Ref LeadboardApi
+      StatusCode: '401'
+
+  LeadboardApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      Description: Prod deployment for Leadboard API
+      RestApiId: !Ref LeadboardApi
+      StageName: prod
+
+  GetLeadboardFunctionPermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GetLeadboardFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        !Join
+          - ""
+          - - "arn:aws:execute-api:"
+            - !Ref AWS::Region
+            - ":"
+            - !Ref AWS::AccountId
+            - ":"
+            - !Ref LeadboardApi
+            - "/*"
+
+  GetTeamsFunctionPermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GetTeamsFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        !Join
+          - ""
+          - - "arn:aws:execute-api:"
+            - !Ref AWS::Region
+            - ":"
+            - !Ref AWS::AccountId
+            - ":"
+            - !Ref LeadboardApi
+            - "/*"
+
+  PostTeamFunctionPermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PostTeamFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        !Join
+          - ""
+          - - "arn:aws:execute-api:"
+            - !Ref AWS::Region
+            - ":"
+            - !Ref AWS::AccountId
+            - ":"
+            - !Ref LeadboardApi
+            - "/*"
+
+  GetUserFunctionPermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GetUserFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        !Join
+          - ""
+          - - "arn:aws:execute-api:"
+            - !Ref AWS::Region
+            - ":"
+            - !Ref AWS::AccountId
+            - ":"
+            - !Ref LeadboardApi
+            - "/*"
+
+  UpdateScoreFunctionPermissions:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref UpdateScoreFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        !Join
+          - ""
+          - - "arn:aws:execute-api:"
+            - !Ref AWS::Region
+            - ":"
+            - !Ref AWS::AccountId
+            - ":"
+            - !Ref LeadboardApi
+            - "/*"
+
+
+
+  CloudfrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: Leadboard static content distribution Access Identity
+
+  CloudfrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: Leadboard static content distribution
+        DefaultRootObject: index.html
+        Enabled: true
+        Logging:
+          Bucket: !Sub ${CloudfrontAccessLogBucket}.s3.amazonaws.com
+          IncludeCookies: true
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+          TargetOriginId: LeadboardS3
+          ViewerProtocolPolicy: redirect-to-https
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        Origins:
+          - Id: LeadboardS3
+            DomainName: !Sub ${WebsiteBucket}.s3.amazonaws.com
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudfrontOriginAccessIdentity}
+  
+  WebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub config-rules-workshop-${AWS::Region}
+      WebsiteConfiguration:
+        IndexDocument: index.html
+    
+  CloudfrontAccessLogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub config-rules-workshop-access-log-${AWS::Region}
+
+  WebsiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebsiteBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+               CanonicalUser: !GetAtt CloudfrontOriginAccessIdentity.S3CanonicalUserId
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/*"
+          -
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/module-*/*"
+    
+
+Outputs:
+  LeadboardApiInvokeUrl:
+    Description: URL for the deployed leadboard API
+    Value:
+      !Join
+        - ""
+        - - "https://"
+          - !Ref LeadboardApi
+          - ".execute-api."
+          - !Ref AWS::Region
+          - ".amazonaws.com/prod"
+    Export:
+      Name: LeadboardApiUrl
+
+  LeadboardCloudfrontUrl:
+    Value: !GetAtt CloudfrontDistribution.DomainName
+
+  LeadboardS3Bucket:
+    Value: !Ref WebsiteBucket
+
+  LeadboardCloudfrontAccessLogBucket:
+    Value: !Ref CloudfrontAccessLogBucket
+
+  LeadboardUserPool:
+    Value: !Ref UserPool
+
+  LeadboardUserPoolClient:
+    Value: !Ref UserPoolClient

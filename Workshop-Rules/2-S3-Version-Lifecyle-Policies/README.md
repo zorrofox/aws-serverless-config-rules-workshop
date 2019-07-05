@@ -9,7 +9,11 @@ This rule focuses on driving cost savings, and data retention with Amazon S3. S3
 ### Hints for Completion
 1. Remember to use the provided sample events to test your function rule. ...The test events may also provide a good reference for the evaluations your code should perform.
 2. Take a look at the previous module for how the code was arranged, you might be able to use it as a reference replace the missing code!
+3. We also need a Config Rule Parameter to whilelist our compliance role.
 
 Region| Launch
 ------|-----
-EU (Ireland) | [![Launch Module 2 in eu-west-1](http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/images/cloudformation-launch-stack-button.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=ConfigRules-Module-2-S3-Bucket-Lifecycle-and-Verisoning&templateURL=https://s3.amazonaws.com/config-rules-workshop-eu-west-1/module-2/template.yml)
+US East (N. Virginia) | [![Launch Module 2 in us-east-1](http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/images/cloudformation-launch-stack-button.png)](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=ConfigRules-Module-1-Security-Groups&templateURL=https://s3.ap-northeast-1.amazonaws.com/config-rules-workshop-ap-northeast-1/module-1/template.yml)
+US West (N. California) | [![Launch Module 2 in us-west-1](http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/images/cloudformation-launch-stack-button.png)](https://console.aws.amazon.com/cloudformation/home?region=us-west-1#/stacks/new?stackName=ConfigRules-Module-1-Security-Groups&templateURL=https://s3.ap-northeast-1.amazonaws.com/config-rules-workshop-ap-northeast-1/module-1/template.yml)
+Asia Pacific (Tokyo) | [![Launch Module 2 in ap-northeast-1](http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/images/cloudformation-launch-stack-button.png)](https://console.aws.amazon.com/cloudformation/home?region=ap-northeast-1#/stacks/new?stackName=ConfigRules-Module-1-Security-Groups&templateURL=https://s3.ap-northeast-1.amazonaws.com/config-rules-workshop-ap-northeast-1/module-1/template.yml)
+EU (Ireland) | [![Launch Module 2 in eu-west-1](http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/images/cloudformation-launch-stack-button.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=ConfigRules-Module-2-S3-Bucket-Lifecycle-and-Verisoning&templateURL=https://s3.amazonaws.com/config-rules-workshop-ap-northeast-1/module-2/template.yml)

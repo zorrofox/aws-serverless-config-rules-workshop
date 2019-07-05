@@ -5,7 +5,7 @@ import ipaddress
 import logging
 import boto3
 
-config_service = boto3.client('##CHANGED##')
+config_service = boto3.client('config')
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -16,24 +16,28 @@ def cidrcheck(net1, net2):
     for i in prem:
         n1 = ipaddress.IPv4Network(i, strict=False)
         n2 = ipaddress.IPv4Network(net2)
-        if ##CHANGED##.overlaps(##CHANGED##):
+        if n1.overlaps(n2):
             logger.info("Found Overlap!")
-            ##LINE_REMOVED: what variable should be set, indicated that an overlap was found?##
+            noOverlaps = False
 
     return noOverlaps
 
 # Lambda Function Handler filename.handler -
 # Creates AWS Config Rule connection and parses event object to find VPC CIDR's
 def lambda_handler(event, context):
+
+    logger.info(json.dumps(event))
+
     event_item = json.loads(event['invokingEvent'])
+    rules_item = json.loads(event['ruleParameters'])
     config_item = event_item['configurationItem']
     resource_type = config_item['resourceType']
 
-    logger.info("Event: " + json.dumps(event))
+    logger.info(json.dumps(rules_item))
 
 # Make sure config_item is not deleted and of the correct type
     if config_item['configurationItemStatus'] == 'ResourceDeleted' or \
-       resource_type != '##CHANGED##':
+       resource_type != 'AWS::EC2::VPC':
         return
 
 # Setup the Evaluation object and set its variables to the event object
@@ -44,11 +48,9 @@ def lambda_handler(event, context):
         'OrderingTimestamp': config_item['configurationItemCaptureTime']
     }
 # Execute evaluation
-    rules_item = json.loads(event['ruleParameters'])
-    onprem = rules_item['##CHANGED##'].split('##CHANGED##')
-    cidr = config_item['configuration']['##CHANGED##']
-
-    result = ##LINED_REMOVED: where are the networks checked for an overlap?##
+    cidr = config_item['configuration']['cidrBlock']
+    onprem = rules_item['onPremNetworks'].split(',')
+    result = cidrcheck(onprem, cidr)
 
     if result is True:
         evaluation['ComplianceType'] = 'COMPLIANT'
@@ -59,5 +61,5 @@ def lambda_handler(event, context):
         config_service.put_evaluations(
            Evaluations=[evaluation], ResultToken=event['resultToken']
         )
-
+        
     return evaluation['ComplianceType']

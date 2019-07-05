@@ -7,7 +7,7 @@ This rule is intended to ensure that all SSH access granted via security groups 
 ## Create a Lambda Function
 Each Config rule that you create and manage is an AWS Lambda function that contains the logic for evaluating resource configurations tracked and notified through AWS Config. All of the code that we have provided for this module (in [`rule.py`](./rule.py)) represents a complete Lambda function to evaluate security group configurations according to the rule we have described above, in Python 3.6. In order to create a Lambda function for this code to be executed, follow these steps:
 
-1. Visit the [AWS Lambda console](https://eu-west-1.console.aws.amazon.com/lambda/home?region=eu-west-1).
+1. Visit the [AWS Lambda console](https://console.aws.amazon.com/lambda/home).
 
 2. Select **Create Function**
 
@@ -30,10 +30,11 @@ Each Config rule that you create and manage is an AWS Lambda function that conta
 Next we will enable AWS Config and create your first Config Rule so that this Lambda function is executed whenever configuration changes occur for your security groups.
 
 ## Enabling AWS Config
-If you have never used the AWS Config Service, you will first need to enable it.  Follow [these steps to enable AWS Config](http://docs.aws.amazon.com/config/latest/developerguide/gs-console.html), be sure you enable config within the appropriate region for this workshop: [eu-west-1/Ireland](https://eu-west-1.console.aws.amazon.com/config/home?region=eu-west-1).
+If you have never used the AWS Config Service, you will first need to enable it.  Follow [these steps to enable AWS Config](http://docs.aws.amazon.com/config/latest/developerguide/gs-console.html), be sure you enable config within the appropriate region for this workshop: [config console](https://console.aws.amazon.com/config/home).
 
 ## Creating a Config Rule
 1. On the AWS Config console home page, choose **Rules**, then **+Add Rule**:
+
 ![Add Rule](Images/Add-Rule.png)
 
 2. Here, you'll see many available Config Rules that AWS has created and will manage for you, called Managed  Rules. For this workshop we will be creating Custom Rules.  Choose **+Custom Rule**:
@@ -56,27 +57,30 @@ If you have never used the AWS Config Service, you will first need to enable it.
 ## Scoring!
 After you have tested your Config Rule to your satisfaction for each module, you will find a button located within each Module directory, to launch a CloudFormation stack.  This stack will create all of the resources required to test and assess the correctness of the Config Rule and Lambda function you've created.  Each assessment occurs as an **Execution** via an AWS Step Functions State Machine that is created by the CloudFormation template for that module.  
 
-1. Click the button below to launch the template, leaving all settings as default (checking boxes on the **Review** page to acknowledge the stack will create IAM resources, and choosing the **Create Change Set** button so that the Serverless Application Model template will be transformed into a CloudFormation template):
+1. Click the button below to launch the template, leaving all settings as default (checking boxes on the **Review** page to acknowledge the stack will create IAM resources:
 ![Cloudformation Choices](Images/Cloudformation.png)
 
 
 Region| Launch
 ------|-----
-EU (Ireland) | [![Launch Module 1 in eu-west-1](http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/images/cloudformation-launch-stack-button.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=ConfigRules-Module-1-Security-Groups&templateURL=https://s3.amazonaws.com/config-rules-workshop-eu-west-1/module-1/template.yml)
+US East (N. Virginia) | [![Launch Module 1 in us-east-1](http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/images/cloudformation-launch-stack-button.png)](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=ConfigRules-Module-1-Security-Groups&templateURL=https://s3.ap-northeast-1.amazonaws.com/config-rules-workshop-ap-northeast-1/module-1/template.yml)
+US West (N. California) | [![Launch Module 1 in us-west-1](http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/images/cloudformation-launch-stack-button.png)](https://console.aws.amazon.com/cloudformation/home?region=us-west-1#/stacks/new?stackName=ConfigRules-Module-1-Security-Groups&templateURL=https://s3.ap-northeast-1.amazonaws.com/config-rules-workshop-ap-northeast-1/module-1/template.yml)
+Asia Pacific (Tokyo) | [![Launch Module 1 in ap-northeast-1](http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/images/cloudformation-launch-stack-button.png)](https://console.aws.amazon.com/cloudformation/home?region=ap-northeast-1#/stacks/new?stackName=ConfigRules-Module-1-Security-Groups&templateURL=https://s3.ap-northeast-1.amazonaws.com/config-rules-workshop-ap-northeast-1/module-1/template.yml)
+EU (Ireland) | [![Launch Module 1 in eu-west-1](http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/images/cloudformation-launch-stack-button.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=ConfigRules-Module-1-Security-Groups&templateURL=https://s3.ap-northeast-1.amazonaws.com/config-rules-workshop-ap-northeast-1/module-1/template.yml)
 
-2. After the stack has been created, visit the Step Functions console in the region you have created the stack, select the created state machine for the module, and then choose **New Execution**:
-![New Exexcution](/Images/New-Execution.png)
+2. After the stack has been created, visit the Step Functions console in the region you have created the stack, select the created state machine for the module, and then choose **Start execution**:
+![New Exexcution](../../Images/New-Execution.png)
 
 3. For the Execution Input, visit the [**Config Workshop Leaderboard**](https://amzn.to/aws-config-rules-workshop), and after you have Created or Joined a team, choose the **Copy JWT** button:
-![Copy JWT](/Images/Copy-JWT.png)
+![Copy JWT](../../Images/Copy-JWT.png)
 
 4. Take what you've just copied and paste it to replace the default State Machine input for the state machine created for this Module:  
-![Pasted JWT](/Images/JWT-Pasted.png)
+![Pasted JWT](../../Images/JWT-Pasted.png)
 
 5. Then choose **Start Execution**.
 
 6. The execution will take 5-10 minutes to complete, and it's path through the state machine will indicate if your Config Rule has met the requirements and if any points have been scored for your team!  
-![State Machine Step Graph](/Images/SFN-Execution-Map.png)
+![State Machine Step Graph](../../Images/SFN-Execution-Map.png)
 
 ### Earn Points Together
 You can only get credit for the same rule once, as an individual team member.  But your team *will* receive points for the same rule as different team members complete each Module - **so help your team members complete their rules as well!**

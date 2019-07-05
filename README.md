@@ -1,8 +1,8 @@
 # Making Things Right With AWS Lambda and AWS Config Rules
 
-![Config Rules RULES](/Images/Config-Header.png)
+![Config Rules RULES](Images/Config-Header.png)
 
-## View the Leaderboard - https://amzn.to/aws-config-rules-workshop
+## View the Leaderboard - https://d19r22d22bfa5a.cloudfront.net
 
 This repository contains five partially completed AWS Lambda functions, written in Python, to be completed and used as AWS Config Rules when attending the “Making Things Right With AWS Lambda and AWS Config Rules” workshop.  
 
@@ -19,7 +19,7 @@ Participants working on the same Config Rules Workshop team will complete rules 
 ### 2. A Config Rules Workshop Leaderboard Account
 We have created a Leaderboard Web Application where you can register and compete against the other teams attending your workshop. You will need to register with the leaderboard in order to test that your completed Config Rules are operating as described, and to earn your team points!
 
-Find and register for the Workshop leaderboard [**here**](https://amzn.to/aws-config-rules-workshop)
+Find and register for the Workshop leaderboard [**here**](https://d19r22d22bfa5a.cloudfront.net)
 
 Once registered, Create or Join a Team with the group of workshop attendees you will be cooperating with to complete all of your custom AWS Config Rules.  You are welcome to work on your own team if you prefer. But in order to earn points, you must still Create a Team, even if you are the team's only member.
 
@@ -34,17 +34,17 @@ Within each Workshop Module, you will find the following 3 files:
 3. **noncompliant_test_event.json** - A json object that can be used within the Lambda console as a test event to see if your code will successfully have marked the event as NON_COMPLIANT.
 
 ### Testing Your Rule (earning points!)
-After you have tested your Config Rule to your satisfaction for each module, you will find a button located within each Module directory to launch a CloudFormation stack.  This stack will create all of the resources required to test and assess the correctness of the Config Rule and Lambda function you've created.  Each assessment occurs as an **Execution** via an AWS Step Functions State Machine that is created by the CloudFormation template for that module.  Simply visit the [Step Functions console](https://eu-west-1.console.aws.amazon.com/states/), select the created state machine for the module, and then choose **New Execution**:  
-![New Exexcution](/Images/New-Execution.png)
+After you have tested your Config Rule to your satisfaction for each module, you will find a button located within each Module directory to launch a CloudFormation stack.  This stack will create all of the resources required to test and assess the correctness of the Config Rule and Lambda function you've created.  Each assessment occurs as an **Execution** via an AWS Step Functions State Machine that is created by the CloudFormation template for that module.  Simply visit the [Step Functions console](https://console.aws.amazon.com/states/), select the created state machine for the module, and then choose **New Execution**:  
+![New Exexcution](Images/New-Execution.png)
 
 For the *Execution Input*, visit the [**Config Workshop Leaderboard**](https://amzn.to/aws-config-rules-workshop/), and after you have **Created or Joined a Team**, choose the **Copy JWT** button:  
-![Copy JWT](/Images/Copy-JWT.png)
+![Copy JWT](Images/Copy-JWT.png)
 
 If you do not join a team on the Leaderboard, you will not receive points! Take your copied JWT input, and replace the default State Machine input with all that's been copied as the input to the State Machine Execution:
-![Pasted JWT](/Images/JWT-Pasted.png)
+![Pasted JWT](Images/JWT-Pasted.png)
 
 The execution will take 5-10 minutes to complete, and it's path through the state machine will indicate if your Config Rule has met the requirements and if any points have been scored for your team!  A completed execution will look like the below (failure will result in a red failure state):
-![State Machine Step Graph](/Images/SFN-Execution-Map.png)
+![State Machine Step Graph](Images/SFN-Execution-Map.png)
 
 Each individual on your team can only receive points once for each rule.  But your team *can* receive points for the same rule as different team members complete each Module - **so help your team members complete their rules as well!**
 

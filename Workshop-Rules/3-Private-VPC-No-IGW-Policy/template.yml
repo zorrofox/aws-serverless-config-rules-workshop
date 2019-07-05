@@ -1,0 +1,521 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Resources:
+
+  InduceRuleTriggerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Runtime: python3.6
+      Timeout: 10
+      Role: !GetAtt LambdaExecRole.Arn
+      Code:
+        ZipFile: >
+          import boto3
+
+          import json
+
+          import random
+
+          import string
+
+          import datetime
+
+          import logging
+
+          import time
+
+          from botocore.exceptions import ClientError
+
+
+          ec2 = boto3.client('ec2')
+
+          compliantVpcIp = "10.33.0.0/16"
+
+          nonCompliantVpcIp = "10.217.0.0/16"
+
+          logger = logging.getLogger()
+
+          logger.setLevel(logging.INFO)
+
+          def lambda_handler(event, context):
+              try:
+                  startTime = datetime.datetime.utcnow()
+
+                  compliantVpcId = ec2.create_vpc(CidrBlock=compliantVpcIp)['Vpc']['VpcId']
+                  logger.info("CompliantVpcId: " + compliantVpcId)
+                  nonCompliantVpcId = ec2.create_vpc(CidrBlock=nonCompliantVpcIp)['Vpc']['VpcId']
+                  logger.info("NonCompliantVpcId: " + nonCompliantVpcId)
+
+                  time.sleep(1)
+                  ec2.create_tags(
+                      Resources=[ compliantVpcId, nonCompliantVpcId ],
+                      Tags=[ { 'Key': 'private', 'Value': 'true' } ]
+                  )
+
+                  nonCompliantIgwId = ec2.create_internet_gateway()['InternetGateway']['InternetGatewayId']
+                  logger.info("NonCompliantIgwId: " + nonCompliantIgwId)
+                  ec2.attach_internet_gateway(
+                      InternetGatewayId=nonCompliantIgwId,
+                      VpcId=nonCompliantVpcId
+                  )
+
+                  resource = {
+                      'ResourceType': 'AWS::EC2::VPC',
+                      'ResourceName': compliantVpcId,
+                      'ValidationResources': {
+                          'NON_COMPLIANT': nonCompliantVpcId,
+                          'COMPLIANT': compliantVpcId
+                      },
+                      'CleanupResources': {
+                          'CompliantVpcId': compliantVpcId,
+                          'NonCompliantVpcId': nonCompliantVpcId,
+                          'NonCompliantIgwId': nonCompliantIgwId
+                      },
+                      'StartTime': startTime.replace(microsecond=0).isoformat('T') + 'Z'
+                  }
+                  print('{ "Resource": ' + json.dumps(resource) + ' }')
+
+                  return resource
+
+              except ClientError as e:
+                  logger.error(e)
+
+
+  CheckCloudTrailFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Runtime: python3.6
+      Timeout: 10
+      Role: !GetAtt LambdaExecRole.Arn
+      Code:
+        ZipFile: >
+          import boto3
+
+          import json
+
+          import logging
+
+          import datetime
+
+          logger = logging.getLogger()
+
+          logger.setLevel(logging.INFO)
+
+          client = boto3.client("cloudtrail")
+
+          config = boto3.client("config")
+
+          def lambda_handler(event, context):
+
+              logger.info(json.dumps(event));
+
+              resource_name = event['Resource']['ResourceName']
+              resource_type = event['Resource']['ResourceType']
+              start_time = event['Resource']['StartTime']
+              start_time_dt = datetime.datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%SZ")
+              logger.info('resource_name = ' + resource_name)
+              logger.info('start_time = ' + start_time)
+              logger.info('start_time_dt = ' + str(start_time_dt))
+
+              #check presence in config first since it's faster than CloudTrailEvent
+              not_compliant_vpc_id = event['Resource']['ValidationResources']['NON_COMPLIANT']
+              notcomp_config_response = config.get_compliance_details_by_resource(
+                  ResourceType=resource_type,
+                  ResourceId=resource_name
+              )
+
+              compliant_vpc_id = event['Resource']['ValidationResources']['COMPLIANT']
+              comp_config_response = config.get_compliance_details_by_resource(
+                  ResourceType=resource_type,
+                  ResourceId=resource_name
+              )
+
+              #both new SGs have been evaluated by config
+              if notcomp_config_response['EvaluationResults'] and comp_config_response['EvaluationResults']:
+                  return {
+                      'Wait': 'false'
+                  }
+
+
+              response = client.lookup_events(
+                  LookupAttributes=[
+                      {
+                          'AttributeKey': 'ResourceName',
+                          'AttributeValue': resource_name
+                      }
+                  ],
+                  StartTime=start_time_dt
+              )
+              logger.info(response)
+
+              if not response['Events']:
+                  return {
+                      'Wait': 'true'
+                  }
+
+              return {
+                  'Wait': 'false',
+                  'CloudTrailEvent': response['Events'][0]['CloudTrailEvent']
+              }
+
+
+
+  CheckComplianceFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Runtime: python3.6
+      Timeout: 10
+      Role: !GetAtt LambdaExecRole.Arn
+      Code:
+        ZipFile: >
+          import boto3
+
+          import botocore
+
+          import json
+
+          import logging
+
+          logger = logging.getLogger()
+
+          logger.setLevel(logging.INFO)
+
+          client = boto3.client("config");
+
+          def lambda_handler(event, context):
+              resources = event['Resource']['ValidationResources']
+              resource_type = event['Resource']['ResourceType']
+              logger.info('resource_type = ' + resource_type)
+              update_points = "Yes"
+
+              not_compliant_vpc_id = resources['NON_COMPLIANT']
+              compliant_vpc_id = resources['COMPLIANT']
+
+              #check not compliant for success first
+              resource_name = not_compliant_vpc_id
+              response = client.describe_compliance_by_resource(
+                  ResourceType=resource_type,
+                  ResourceId=resource_name
+                  )
+              logger.info(json.dumps(response));
+
+              if len(response['ComplianceByResources']) == 0:
+                  return {
+                      'Status': 'ERROR',
+                      'Response': json.dumps(response)
+                      }
+
+              compliance = response['ComplianceByResources'][0]['Compliance']['ComplianceType']
+              if compliance != "NON_COMPLIANT":
+                  logger.info(compliance + " NON_COMPLIANT")
+                  update_points = "No"
+
+              #check compliant SG next to make sure marked compliant
+              resource_name = compliant_vpc_id
+              response = client.describe_compliance_by_resource(
+                  ResourceType=resource_type,
+                  ResourceId=resource_name
+                  )
+              logger.info(json.dumps(response));
+
+              if len(response['ComplianceByResources']) == 0:
+                  return {
+                      'Status': 'ERROR',
+                      'Response': json.dumps(response)
+                      }
+
+              compliance = response['ComplianceByResources'][0]['Compliance']['ComplianceType']
+              if compliance != "COMPLIANT":
+                  logger.info(compliance + " COMPLIANT")
+                  update_points="No"
+
+              return {
+                  'UpdatePoints': update_points
+              }
+
+  UpdateScoreFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Runtime: python3.6
+      Timeout: 10
+      Role: !GetAtt LambdaExecRole.Arn
+      Code:
+        ZipFile: >
+          import json
+
+          import logging
+
+          import urllib
+
+          logger = logging.getLogger()
+
+          logger.setLevel(logging.INFO)
+
+          def lambda_handler(event, context):
+              logger.info(json.dumps(event));
+
+              jwt = event['Jwt']
+              leaderboard_url = event['Leaderboard']['Url']
+              rule_id = event['Leaderboard']['RuleId']
+              points = event['Leaderboard']['Points']
+              logger.info('jwt = ' + jwt)
+              logger.info('leaderboard_url = ' + leaderboard_url)
+              logger.info('rule_id = ' + rule_id)
+              logger.info('points = ' + points)
+
+              payload = {
+                  'ruleId': rule_id,
+                  'points': points
+              }
+
+              req = urllib.request.Request(leaderboard_url)
+              req.add_header('Authorization', jwt)
+
+              response = urllib.request.urlopen(req, data=bytes(json.dumps(payload), encoding='utf-8'))
+              responseBody = json.loads(response.read().decode('utf-8'))
+
+              logger.info('response = ' + json.dumps(responseBody));
+
+              return {
+                  'StatusCode': response.status
+              }
+
+
+
+  CleanupFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Runtime: python3.6
+      Timeout: 10
+      Role: !GetAtt LambdaExecRole.Arn
+      Code:
+        ZipFile: >
+          import boto3
+
+          import json
+
+          import string
+
+          import logging
+
+          from botocore.exceptions import ClientError
+
+
+          ec2 = boto3.client('ec2')
+
+          logger = logging.getLogger()
+
+          logger.setLevel(logging.INFO)
+
+          def lambda_handler(event, context):
+
+              logger.info(json.dumps(event))
+              compliantVpcId = event['Resource']['CleanupResources']['CompliantVpcId']
+              nonCompliantVpcId = event['Resource']['CleanupResources']['NonCompliantVpcId']
+              nonCompliantIgwId = event['Resource']['CleanupResources']['NonCompliantIgwId']
+
+              try:
+
+                  response = ec2.delete_vpc(
+                      VpcId=compliantVpcId
+                  )
+                  logger.info("Delete Compliant VPC: " + json.dumps(response))
+
+                  response = ec2.detach_internet_gateway(
+                      VpcId=nonCompliantVpcId,
+                      InternetGatewayId=nonCompliantIgwId
+                  )
+                  logger.info("Detach NonCompliant IGW: " + json.dumps(response))
+
+                  response = ec2.delete_vpc(
+                      VpcId=nonCompliantVpcId
+                  )
+                  logger.info("Delete NonCompliant VPC: " + json.dumps(response))
+
+                  response = ec2.delete_internet_gateway(
+                      InternetGatewayId=nonCompliantIgwId
+                  )
+                  logger.info("Delete NonCompliant IGW: " + json.dumps(response))
+
+                  return {
+                      'Cleanup-Status': 'VPCs successfully deleted.'
+                  }
+
+              except ClientError as e:
+                  print(e)
+
+
+
+  LambdaExecRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement: 
+          - 
+            Effect: Allow
+            Principal: 
+              Service: 
+                - lambda.amazonaws.com
+            Action: 
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies: 
+        - PolicyName: LambdaConifigCheckPolicy
+          PolicyDocument: 
+            Version: 2012-10-17
+            Statement:
+               - Effect: Allow
+                 Resource: '*'
+                 Action:
+                  - ec2:DeleteInternetGateway
+                  - ec2:DeleteVpc'
+                  - ec2:DetachInternetGateway
+                  - config:DescribeComplianceByResource
+                  - config:GetComplianceDetailsByResource
+                  - cloudtrail:LookupEvents
+                  - ec2:AttachInternetGateway
+                  - ec2:CreateInternetGateway
+                  - ec2:CreateTags
+                  - ec2:CreateVpc
+
+
+  StatesExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: StatesExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource: "*"
+
+  StateMachine:
+    Type: "AWS::StepFunctions::StateMachine"
+    Properties:
+      StateMachineName: "ConfigRulesWorkshop-3-Private-VPC-No-IGW"
+      DefinitionString:
+        !Sub
+          - |-
+            {
+              "Comment": "A test harness for VPC Overlap Config Rule",
+              "StartAt": "setup",
+              "States": {
+                "setup": {
+                  "Type": "Pass",
+                  "Result": {
+                    "Url": "https://f0ah4xd3c0.execute-api.ap-northeast-1.amazonaws.com/prod/teamscores",
+                    "RuleId": "Private-VPC-No-IGW",
+                    "Points": "200"
+                  },
+                  "ResultPath": "$.Leaderboard",
+                  "Next": "induce_rule"
+                },
+                "induce_rule": {
+                  "Type": "Task",
+                  "Resource": "${InduceRuleTriggerFunctionArn}",
+                  "ResultPath": "$.Resource",
+                  "Next": "wait_ten_seconds"
+                },
+                "wait_ten_seconds" : {
+                  "Type" : "Wait",
+                  "Seconds" : 10,
+                  "Next": "check_cloudtrail"
+                },
+                "check_cloudtrail" : {
+                  "Type" : "Task",
+                  "Resource": "${CheckCloudTrailFunctionArn}",
+                  "ResultPath": "$.CloudTrail",
+                  "Next": "wait_longer"
+                },
+                "wait_longer": {
+                  "Type" : "Choice",
+                  "Choices": [
+                    {
+                      "Variable": "$.CloudTrail.Wait",
+                      "StringEquals": "true",
+                      "Next": "wait_ten_seconds"
+                    },
+                    {
+                      "Variable": "$.CloudTrail.Wait",
+                      "StringEquals": "false",
+                      "Next": "wait_three_seconds"
+                    }
+                  ],
+                  "Default": "unknown_wait"
+                },
+                "unknown_wait": {
+                  "Type": "Fail",
+                  "Error": "non-boolean value for wait_longer wait value: $.CloudTrail.Wait"
+                },
+                "wait_three_seconds" : {
+                  "Type" : "Wait",
+                  "Seconds" : 3,
+                  "Next": "check_compliance"
+                },
+                "check_compliance": {
+                  "Type" : "Task",
+                  "Resource": "${CheckComplianceFunctionArn}",
+                  "ResultPath": "$.UpdatePoints",
+                  "Next": "cleanup"
+                },
+                "cleanup": {
+                  "Type": "Task",
+                  "Resource": "${CleanupFunctionArn}",
+                  "ResultPath": "$.CleanupStatus",
+                  "Next": "is_compliant"
+                },
+                "is_compliant": {
+                  "Type" : "Choice",
+                  "Choices": [
+                    {
+                      "Variable": "$.UpdatePoints.UpdatePoints",
+                      "StringEquals": "Yes",
+                      "Next": "update_score"
+                    },
+                    {
+                      "Variable": "$.UpdatePoints",
+                      "StringEquals": "No",
+                      "Next": "skip_update_score"
+                    }
+                  ],
+                  "Default": "skip_update_score"
+                },
+              	"skip_update_score": {
+                  "Type": "Fail",
+                  "Error": "Your rule did not mark each VPC appropriately."
+                },
+                "update_score": {
+                  "Type": "Task",
+                  "Resource": "${UpdateScoreFunctionArn}",
+                  "ResultPath": "$.Result",
+                  "End": true
+                }
+              }
+            }
+          - {
+              InduceRuleTriggerFunctionArn: !GetAtt [ InduceRuleTriggerFunction, Arn ],
+              CheckCloudTrailFunctionArn: !GetAtt [ CheckCloudTrailFunction, Arn ],
+              CheckComplianceFunctionArn: !GetAtt [ CheckComplianceFunction, Arn ],
+              UpdateScoreFunctionArn: !GetAtt [ UpdateScoreFunction, Arn ],
+              CleanupFunctionArn: !GetAtt [ CleanupFunction, Arn ]
+            }
+      RoleArn: !GetAtt StatesExecutionRole.Arn

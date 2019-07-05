@@ -1,37 +1,40 @@
-import ##CHANGED##
-import ##CHANGED##
+import json
+import boto3
 import logging
 
 
-APPLICABLE_RESOURCES = ["##CHANGED##"]
-config = boto3.client("##CHANGED##")
+APPLICABLE_RESOURCES = ["AWS::S3::Bucket"]
+config = boto3.client("config")
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 def evaluate_compliance(invoking_event, whitelisted_role):
 
     if invoking_event['configurationItem']['resourceType'] not in APPLICABLE_RESOURCES:
-        return "##CHANGED##"
+        return "NOT_APPLICABLE"
 
     if invoking_event['configurationItem']['configurationItemStatus'] == "ResourceDeleted":
-        return "##CHANGED##"
+        return "NOT_APPLICABLE"
 
     compliance_status = "COMPLIANT"
 
-    configuration_diff = invoking_event['configurationItemDiff']
-    account_id = ##LINED_REMOVED: where can this be retrieved from?##
-    policy_text = ##LINE_REMOVED: where can this be retrieved from?##
 
-    #Convert the string policy above to JSON
+    if not invoking_event['configurationItemDiff']:
+        return "NOT_APPLICABLE"
+
+    configuration_diff = invoking_event['configurationItemDiff']
+    account_id = invoking_event['configurationItem']['awsAccountId']
+    policy_text = invoking_event['configurationItem']['supplementaryConfiguration']['BucketPolicy']['policyText']
     b = bytes(policy_text, encoding='ascii')
     policy = json.loads(b.decode('unicode-escape'))
-    logger.info("POLICY: " + json.dumps(policy))
+    print("POLICY: " + json.dumps(policy))
 
     if 'Statement' in policy:
-        for statement in policy['##CHANGED##']:
+        for statement in policy['Statement']:
+            print(json.dumps(statement))
             if 'Action' in statement and 'Principal' in statement:
-                if ##LINE_REMOVED: does this Action give permission to perform read actions?##:
-                    if 'AWS' not in statement['Principal'] or statement['Principal']['AWS'] != ##LINE_REMOVED: what is the principal value allowed to be?##:
+                if 'Get' in statement['Action'] or '*' in statement['Action']:
+                    if 'AWS' not in statement['Principal'] or statement['Principal']['AWS'] != "arn:aws:iam::" + account_id + ":role/" + whitelisted_role:
                         compliance_status = "NON_COMPLIANT"
 
     return compliance_status
@@ -43,10 +46,10 @@ def lambda_handler(event, context):
 
     invoking_event = json.loads(event["invokingEvent"])
     rule_parameters = json.loads(event["ruleParameters"])
-    whitelisted_role = rule_parameters["##CHANGED##"]
+    whitelisted_role = rule_parameters["whitelistedRole"]
     configuration_item = invoking_event['configurationItem']
-    if not invoking_event['##CHANGED##']:
-        return "Nothing to check, resource didn't change."
+    if not invoking_event['configurationItemDiff']:
+        return "Nothing to check, policy didn't change."
 
     result_token = "No token found."
     if "resultToken" in event:
@@ -56,10 +59,21 @@ def lambda_handler(event, context):
     compliance = evaluate_compliance(invoking_event, whitelisted_role)
 
     evaluation = {
-        ##LINES_REMOVED: how do we create the evaluation object that Config requires?##
+        "ComplianceResourceType":
+            configuration_item["resourceType"],
+        "ComplianceResourceId":
+            configuration_item["resourceId"],
+        "ComplianceType": compliance,
+        "Annotation":
+            "SSH Access is allowed to not allowed IP addess range",
+        "OrderingTimestamp":
+            configuration_item["configurationItemCaptureTime"]
     }
 
     if "dryRun" not in event:
-        ##LINES_REMOVED: how do we inform config that this evlauation has completed?##
+        config.put_evaluations(
+            Evaluations=[evaluation],
+            ResultToken=result_token
+        )
 
     return evaluation['ComplianceType']

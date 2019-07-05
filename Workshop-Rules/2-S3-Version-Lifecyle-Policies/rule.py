@@ -23,8 +23,8 @@ def evaluate_compliance(configuration_item):
                           "and therefore cannot be validated"
         }
 
-    bucket_verConfig = configuration_item["##CHANGED##"].get("##CHANGED##")
-    bucket_lifeConfig = configuration_item["##CHANGED##"].get("##CHANGED##")
+    bucket_verConfig = configuration_item["supplementaryConfiguration"].get("BucketVersioningConfiguration")
+    bucket_lifeConfig = configuration_item["supplementaryConfiguration"].get("BucketLifecycleConfiguration")
 
     if bucket_verConfig is None:
         return {
@@ -32,7 +32,7 @@ def evaluate_compliance(configuration_item):
             "annotation": 'Bucket does not contain a Versioning Configuration.'
         }
     else:
-        if bucket_verConfig['##CHANGED##'] == "Off":
+        if bucket_verConfig['status'] == "Off":
             return {
                 "compliance_type": "NON_COMPLIANT",
                 "annotation": 'Bucket Versioning is disabled.'
@@ -45,7 +45,7 @@ def evaluate_compliance(configuration_item):
         }
 
     if (bucket_lifeConfig['rules'][0]['noncurrentVersionTransitions'][0]['days'] > 0) and \
-        (bucket_lifeConfig['rules'][0]['noncurrentVersionTransitions'][0]['storageClass'] == "##CHANGED##"):
+        (bucket_lifeConfig['rules'][0]['noncurrentVersionTransitions'][0]['storageClass'] == "GLACIER"):
         return {
             "compliance_type": "COMPLIANT",
             "annotation": 'Bucket Versioning is enabled and Lifecycle policy is set to archive older versions to Glacier'
@@ -59,9 +59,9 @@ def evaluate_compliance(configuration_item):
 
 def lambda_handler(event, context):
     log.debug('Event %s', event)
-    invoking_event = json.loads(event['##CHANGED##'])
-    configuration_item = invoking_event['##CHANGED##']
-    compliance = ##REMOVED##
+    invoking_event = json.loads(event['invokingEvent'])
+    configuration_item = invoking_event["configurationItem"]
+    compliance = evaluate_compliance(configuration_item)
     evaluation = {
         'ComplianceResourceType': invoking_event['configurationItem']['resourceType'],
         'ComplianceResourceId': invoking_event['configurationItem']['resourceId'],
